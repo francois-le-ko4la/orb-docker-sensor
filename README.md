@@ -1,37 +1,45 @@
-# Orb
-
-Home Assistant add-on for Orb.
+# ha-orb-sensor
 
 ## Overview
 
-This add-on runs an [Orb](https://www.orb.net) sensor in your Home Assistant environment. Doing so allows you to monitor the network responsiveness and reliability of your Home Assistant instance from your mobile device or computer from anywhere in the world. You may choose to receive a push notification on your Android or iOS device any time your Home Assistant instance cannot reach the network or experiences deterioriated connectivity.
+This project is a fork of the original, which was designed for supervised Home Assistant environments where add-ons can be installed and managed directly through the Home Assistant interface.
+
+This fork adapts the project to run in standard Home Assistant Docker environments, which do not include the supervised add-on management system.
+
+This container runs an [Orb](https://www.orb.net) sensor in your Home Assistant environment. Doing so allows you to monitor the network responsiveness and reliability of your Home Assistant instance from your mobile device or computer from anywhere in the world. You may choose to receive a push notification on your Android or iOS device any time your Home Assistant instance cannot reach the network or experiences deterioriated connectivity.
 
 ## Installation
 
-1. Navigate to the Home Assistant Add-on Store
-2. Add this repository URL to your add-on repositories
-3. Find the "Orb" add-on in the store
-4. Click Install
-5. Enable auto-updates.
-6. Click Start
+1. git clone
+2. build
+3. use
 
 ## Configuration
 
-The add-on allows configuration of the MQTT push functionality. 
-* **Push Scores to MQTT** (default false): Enabling this will have the orb sensor push its status to the Home Assistant MQTT broker
-* **MQTT Frequency** (default 5 seconds): This determines how often the orb sensor will push its status, if the functionality is enabled
-
+```yaml
+  orb-sensor:
+    image: docker.io/library/ha-orb-sensor:local
+    container_name: orb-sensor
+    network_mode: host
+    environment:
+    - MQTT_HOST=XXX.XXX.XXX.XXX
+    - MQTT_PORT=1883
+    - MQTT_USER=orb
+    - MQTT_PASS=XXXXXXXXXX
+    volumes:
+      - "${DOCKER_ROOT}/orb-sensor/config:/root/.config/orb"
+    restart: always
+```
 
 ## Data Storage
 
-The add-on stores its data in `/data/.config/orb` which is the default persistent storage provided by Home Assistant
+The container stores its data in `/data/.config/orb` which is the default persistent storage provided by Home Assistant
 
 ## Architecture Support
 
-This add-on supports multiple architectures (aarch64, amd64, armv7).
+This build supports multiple architectures (aarch64, amd64, armv7).
 
 ## MQTT Integration
-If you have the [MQTT addon](https://www.home-assistant.io/integrations/mqtt/) installed, the Orb addon will automatically detect the endpoint. Configure the Orb sensor device and start pushing the current orb status.
 
 It will expose the following entities under the Orb Sensor device:
 
