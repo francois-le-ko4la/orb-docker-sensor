@@ -1,38 +1,31 @@
 #!/bin/sh
 
-set -x
-
-AUTH_HEADER="Authorization: Bearer ${SUPERVISOR_TOKEN}"
-MQTT_INFO=$(curl -s -H "$AUTH_HEADER" http://supervisor/services/mqtt)
-
-MQTT_HOST=$(echo "$MQTT_INFO" | jq -r '.data.host')
-MQTT_PORT=$(echo "$MQTT_INFO" | jq -r '.data.port')
-MQTT_USER=$(echo "$MQTT_INFO" | jq -r '.data.username')
-MQTT_PASS=$(echo "$MQTT_INFO" | jq -r '.data.password')
-
 CONFIG_PATH=/data/options.json
-MQTT_PAUSE=$(jq -r '.mqtt_frequency // 5' $CONFIG_PATH)
+#MQTT_PAUSE=$(jq -r '.mqtt_frequency // 5' $CONFIG_PATH 2>/dev/null || echo 5)
 
-echo "MQTT Host: $MQTT_HOST"
-echo "MQTT Port: $MQTT_PORT"
-echo "MQTT User: $MQTT_USER"
+# Read MQTT config from environment variables
+MQTT_HOST="${MQTT_HOST:-localhost}"
+MQTT_PORT="${MQTT_PORT:-1883}"
+MQTT_USER="${MQTT_USER:-}"
+MQTT_PASS="${MQTT_PASS:-}"
+MQTT_PAUSE="${MQTT_PAUSE:-5}"
+
+echo "Local MQTT configuration:"
+echo "  Host: $MQTT_HOST"
+echo "  Port: $MQTT_PORT"
+echo "  User: $MQTT_USER"
+echo "  Pass: *****"
+echo "  Pause: $MQTT_PAUSE seconds"
 
 if [ -z "$MQTT_HOST" ] || [ -z "$MQTT_PORT" ] || [ -z "$MQTT_USER" ] || [ -z "$MQTT_PASS" ]; then
   echo "Error: Missing MQTT configuration"
-  echo "Ensure that the MQTT integration is installed and running. https://www.home-assistant.io/integrations/mqtt/"
-  exit 1
-fi
-
-if [ "$MQTT_HOST" == "null" ] || [ "$MQTT_PORT" == "null" ] || [ "$MQTT_USER" == "null" ] || [ "$MQTT_PASS" == "null" ]; then
-  echo "Error: Missing MQTT configuration"
-  echo "Ensure that the MQTT integration is installed and running. https://www.home-assistant.io/integrations/mqtt/"
   exit 1
 fi
 
 DISCOVERY_TOPIC_PREFIX="homeassistant/sensor"
-STATE_TOPIC="orb_homeassistant/status"
+STATE_TOPIC="orb/status"
 
-# Publish MQTT Discovery message once (retained)
+# Define the sensors to publish
 mapping="
 Score|orb_score.display|%
 Bandwidth Score|orb_score.components.bandwidth_score.display|%
@@ -44,21 +37,19 @@ High Packet Loss Proportion|orb_score.components.reliability_score.components.in
 Responsiveness Score|orb_score.components.responsiveness_score.display|%
 "
 
+# Publish Home Assistant MQTT Discovery once
 echo "$mapping" | while IFS='|' read name field unit; do
-  # Skip empty lines
   [ -z "$name" ] && continue
-
   unique_id=$(echo "$name" | tr '[:upper:]' '[:lower:]' | sed 's/ /_/g')
   DISCOVERY_TOPIC="${DISCOVERY_TOPIC_PREFIX}/orb_${unique_id}/config"
-
 
   payload=$(cat <<EOF
 {
   "name": "${name}",
-  "state_topic": "orb_homeassistant/status",
+  "state_topic": "${STATE_TOPIC}",
   "unit_of_measurement": "${unit}",
   "value_template": "{{ (value_json.${field}) | round(0) }}",
-  "unique_id": "${unique_id}",
+  "unique_id": "orb_${unique_id}",
   "device": {
     "identifiers": ["orb"],
     "name": "Orb Sensor",
@@ -70,22 +61,14 @@ EOF
 )
 
   mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" \
-    -t "$DISCOVERY_TOPIC" \
-    -m "$payload" \
-    -r 
+    -t "$DISCOVERY_TOPIC" -m "$payload" -r
 done
-
-set +x
 
 # Periodic state updates
 while true; do
-  # Replace this with your real data source
   ORB_OUTPUT="$(/app/orb summary || echo '{}')"
-  #echo "ORB_OUTPUT: $ORB_OUTPUT"
-
-  # Publish Orb Summary to MQTT
   mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" \
     -t "$STATE_TOPIC" -m "$ORB_OUTPUT" -r
-
   sleep "$MQTT_PAUSE"
 done
+
